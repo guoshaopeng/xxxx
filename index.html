@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="description" content="Ceshi : cd">
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Ceshi</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/guoshaopeng/ceshi">View on GitHub</a>
+
+          <h1 id="project_title">Ceshi</h1>
+          <h2 id="project_tagline">cd</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/guoshaopeng/ceshi/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/guoshaopeng/ceshi/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <p>目前项目用到HttpClient 和其他系统的http接口进行交互，为了提高并发量，项目采用了线程池模型，但系统在运行一段时间后发现线程池的线程被占用完了，经过分析日志，实际上的并发只有几百条，后来进行的代码自检，找到了问题所在。</p>
+
+<p>private static final HttpClient httpclients = HttpClientUtils.httpclient;</p>
+
+<p>代码在HttpClient初始化的时候考虑到对象频繁的创建会造成系统资源开销，因此采用了 static final 模式，加final 是为了保持调用对象不被修改提高安全性考虑，但当执行http请求是，根据系统日志分析，并发量不大的情况下线程被大量占用，分析静态对象模式和jvm原理并没有找到关于 static final 对象会存在竞争锁的问题，线程不会阻塞，于是进行了代码分析，</p>
+
+<p>httpclient.executeMethod(postMethod);
+后来终于找到原因了，原来是本地httpclient设置时，最大连接数采用了默认设置的原因，而默认的最 大连接数只有2个，所以当有大量连接需要建立时，大多数连接只有等待。，这样当一个请求占用较大时间的时候，一个时段的并发只有2个，线程就被阻塞，HttpClient这个地方会有一个锁定，因此造成了线程大量被占用在等待中，并发较小，线程值线程被占用完
+解决方案：</p>
+
+<pre><code>params.setDefaultMaxConnectionsPerHost(32);//very important!! 
+params.setMaxTotalConnections(256);//very important!!
+</code></pre>
+
+<p>设置httpclient默认连接数和最大连接数，保证并发量增大</p>
+
+<p>第二种方案，可以考虑每次都new 一个httpClient, 当然两种方式都有利弊，使用者应该考虑自己系统的情况</p>
+
+<p>这里需要讲一下 static 和final 以及单例模式，从jvm角度，当我们定义一个static 对象或者单例模式对象的时候，系统会在内存中为该对象开辟一块，在系统运行过程中这个内存栈一直不会改变，调用者使用对象都将指向该内存栈对象，获取调用对象运行。final 是为了锁定该对象，保持对象不变化（final不会锁定对象内的集合的数据），严格意义上这个锁定并不是我们理解的synchronized 即同步锁定，final只会组织对象的属性的改变，但不会阻止两次并发的访问，synchronized 能够保证synchronized 锁定的代码执行完成之后，对象才能释放出来，因此不能造成对象锁定，阻止并发，但HttpClient的连接数 被synchronized 了，所以造成了并发降低</p>
+
+<p>当然，共用一个对象是线程不安全的，当一个static对象被一个线程改变了对象的属性，另一个线程中也将会改变，因此使用的时候要考虑 结合final使用，很多人会有疑问，我们常常采用的spring 默认的状态下不是单例模式吗，这样是否会线程不安全，当然是的，但是大家要知道，交给spring管理的bean都是一些功能函数，我们很少去使用这个bean的对象属性，这点大家也要注意（我们一般不会把数据对象bean交给spring管理），</p>
+
+<p>参照帖子：<a href="http://www.cnblogs.com/lovingprince/archive/2009/09/03/2166308.html">http://www.cnblogs.com/lovingprince/archive/2009/09/03/2166308.html</a></p>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Ceshi maintained by <a href="https://github.com/guoshaopeng">guoshaopeng</a></p>
+        <p>Published with <a href="https://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
